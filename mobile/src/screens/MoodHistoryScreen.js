@@ -111,47 +111,37 @@ export default function MoodHistoryScreen({ navigation }) {
   };
 
   const formatInsight = (insightText) => {
-    console.log('formatInsight called with:', insightText);
     if (!insightText) return <Text style={styles.debugText}>No insight text</Text>;
     
-    // Handle markdown formatting
-    let formattedText = insightText
-      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markdown
-      .replace(/\*(.*?)\*/g, '$1') // Remove italic markdown
-      .replace(/^\- /gm, '• ') // Convert dashes to bullets
-      .trim();
+    // Split into sections by numbered headings
+    const sections = insightText.split(/(?=\d+\.\s+)/);
     
-    console.log('Formatted text:', formattedText);
-    
-    // Split by sections (look for patterns like "1. Mood Analysis:", "2. Potential Patterns:", etc.)
-    const sections = formattedText.split(/(?=\d+\.\s+[A-Z][^:]*:)/);
-    console.log('Sections:', sections);
-    
-    const result = sections.map((section, index) => {
+    return sections.map((section, index) => {
       const trimmed = section.trim();
       if (!trimmed) return null;
       
-      // Check if it's a numbered section
-      if (/^\d+\.\s+[A-Z]/.test(trimmed)) {
-        const lines = trimmed.split('\n');
-        const title = lines[0];
-        const content = lines.slice(1).join('\n').trim();
-        
+      // Extract title and content
+      const match = trimmed.match(/^(\d+\.\s+[^:]+:?)([\s\S]+)$/);
+      if (match) {
+        const [_, title, content] = match;
         return (
           <View key={index} style={styles.insightSection}>
-            <Text style={styles.insightSectionTitle}>{title}</Text>
-            <Text style={styles.insightSectionContent}>{content}</Text>
+            <Text style={styles.insightSectionTitle}>
+              {title.replace(/\*\*/g, '')}
+            </Text>
+            <Text style={styles.insightSectionContent}>
+              {content.replace(/\*\*/g, '').trim()}
+            </Text>
           </View>
         );
-      } else {
-        return (
-          <Text key={index} style={styles.insightText}>{trimmed}</Text>
-        );
       }
+      
+      return (
+        <Text key={index} style={styles.insightText}>
+          {trimmed.replace(/\*\*/g, '')}
+        </Text>
+      );
     }).filter(Boolean);
-    
-    console.log('Format result:', result);
-    return result;
   };
 
   const extractTags = (moodEntry) => {
@@ -297,7 +287,30 @@ export default function MoodHistoryScreen({ navigation }) {
               {loadingInsight ? (
                 <Text style={styles.loadingText}>Loading insights...</Text>
               ) : insight ? (
-                <Text style={styles.insightText}>{insight}</Text>
+                <View style={styles.insightsContainer}>
+                  {insight.split(/(?=\d+\.\s+)/).map((section, index) => {
+                    const trimmed = section.trim();
+                    if (!trimmed) return null;
+
+                    // Remove all asterisks and clean up the text
+                    const cleanText = trimmed.replace(/\*\*/g, '').replace(/\*/g, '');
+                    
+                    // Check if it's a numbered section
+                    const match = cleanText.match(/^(\d+\.\s+[^:]+:?)([\s\S]+)$/);
+                    if (match) {
+                      const [_, title, content] = match;
+                      return (
+                        <View key={index} style={styles.insightSection}>
+                          <Text style={styles.insightSectionTitle}>{title.trim()}</Text>
+                          <Text style={styles.insightSectionContent}>{content.trim()}</Text>
+                        </View>
+                      );
+                    }
+                    return (
+                      <Text key={index} style={styles.insightText}>{cleanText}</Text>
+                    );
+                  })}
+                </View>
               ) : (
                 <Text style={styles.noInsightText}>No insights available</Text>
               )}
@@ -673,27 +686,26 @@ const styles = StyleSheet.create({
   insightSection: {
     marginBottom: 16,
     backgroundColor: '#f8fafc',
-    padding: 12,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
     borderLeftWidth: 4,
     borderLeftColor: '#6366f1',
-    width: '100%',
   },
   insightSectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#374151',
     marginBottom: 8,
   },
   insightSectionContent: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#4b5563',
-    lineHeight: 20,
+    lineHeight: 22,
   },
   insightText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#4b5563',
-    lineHeight: 20,
+    lineHeight: 22,
     marginBottom: 12,
   },
   noInsightText: {

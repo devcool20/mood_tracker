@@ -110,65 +110,71 @@ export default function MoodLoggingScreen({ navigation }) {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.label}>How are you feeling?</Text>
-        
-        <TouchableOpacity 
-          style={styles.moodSelector}
-          onPress={() => setShowMoodPicker(true)}
-        >
-          <Text style={[styles.moodSelectorText, !mood && styles.placeholderText]}>
-            {getSelectedMoodLabel()}
-          </Text>
-          <Text style={styles.dropdownArrow}>▼</Text>
-        </TouchableOpacity>
+    <>
+      <View style={styles.container}>
+        <ScrollView style={styles.scrollView}>
+          <View style={styles.content}>
+            <Text style={styles.label}>How are you feeling?</Text>
+            
+            <TouchableOpacity 
+              style={styles.moodSelector}
+              onPress={() => setShowMoodPicker(true)}
+            >
+              <Text style={[styles.moodSelectorText, !mood && styles.placeholderText]}>
+                {getSelectedMoodLabel()}
+              </Text>
+              <Text style={styles.dropdownArrow}>▼</Text>
+            </TouchableOpacity>
 
-        <Text style={styles.label}>Add a note.</Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder="Describe how you're feeling..."
-          value={textNote}
-          onChangeText={setTextNote}
-          multiline
-          numberOfLines={4}
-        />
+            <Text style={styles.label}>Add a note</Text>
+            <TextInput
+              style={styles.textArea}
+              placeholder="Describe how you're feeling..."
+              value={textNote}
+              onChangeText={setTextNote}
+              multiline
+              numberOfLines={4}
+              placeholderTextColor="#9ca3af"
+            />
 
-        <Text style={styles.label}>Voice Note (optional)</Text>
-        <TouchableOpacity style={styles.voiceButton} onPress={pickVoiceNote}>
-          <Text style={styles.voiceButtonText}>
-            {voiceNote ? `Selected: ${voiceNote.name}` : 'Record or Select Voice Note'}
-          </Text>
-        </TouchableOpacity>
+            <Text style={styles.label}>Voice Note (optional)</Text>
+            <TouchableOpacity style={styles.voiceButton} onPress={pickVoiceNote}>
+              <Text style={styles.voiceButtonText}>
+                {voiceNote ? `Selected: ${voiceNote.name}` : 'Record or Select Voice Note'}
+              </Text>
+            </TouchableOpacity>
 
-        {voiceNote && (
-          <TouchableOpacity 
-            style={styles.removeVoiceButton} 
-            onPress={() => setVoiceNote(null)}
+            {voiceNote && (
+              <TouchableOpacity 
+                style={styles.removeVoiceButton} 
+                onPress={() => setVoiceNote(null)}
+              >
+                <Text style={styles.removeVoiceButtonText}>Remove Voice Note</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </ScrollView>
+
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity
+            style={[styles.logButton, isLoading && styles.buttonDisabled]}
+            onPress={handleLogMood}
+            disabled={isLoading}
           >
-            <Text style={styles.removeVoiceButtonText}>Remove Voice Note</Text>
+            <Text style={styles.logButtonText}>
+              {isLoading ? 'Logging...' : 'Log Mood'}
+            </Text>
           </TouchableOpacity>
-        )}
 
-        <TouchableOpacity
-          style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
-          onPress={handleLogMood}
-          disabled={isLoading}
-        >
-          <Text style={styles.submitButtonText}>
-            {isLoading ? 'Logging...' : 'Log Mood'}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.historyButton}
-          onPress={() => navigation.navigate('MoodHistory')}
-        >
-          <Text style={styles.historyButtonText}>View Mood History</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.historyButton}
+            onPress={() => navigation.navigate('MoodHistory')}
+          >
+            <Text style={styles.historyButtonText}>View Mood History</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Mood Picker Modal */}
       <Modal
         visible={showMoodPicker}
         transparent={true}
@@ -199,35 +205,55 @@ export default function MoodLoggingScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff',
+  },
+  scrollView: {
+    flex: 1,
   },
   content: {
     padding: 20,
+    paddingBottom: 40,
+  },
+  buttonContainer: {
+    padding: 20,
+    paddingBottom: 30,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
   },
   label: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
-    marginBottom: 8,
-    marginTop: 16,
     color: '#374151',
+    marginBottom: 12,
+  },
+  textArea: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: '#374151',
+    marginBottom: 24,
+    height: 120,
+    textAlignVertical: 'top',
   },
   moodSelector: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    backgroundColor: 'white',
-    padding: 12,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
   moodSelectorText: {
     fontSize: 16,
@@ -237,24 +263,23 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
   },
   dropdownArrow: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#6b7280',
   },
-  textInput: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: 'white',
-    textAlignVertical: 'top',
-    fontSize: 16,
-  },
   voiceButton: {
-    backgroundColor: '#6366f1',
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: '#818cf8',
+    padding: 16,
+    borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 24,
+    shadowColor: '#6366f1',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   voiceButtonText: {
     color: 'white',
@@ -262,42 +287,58 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   removeVoiceButton: {
-    backgroundColor: '#ef4444',
-    padding: 8,
-    borderRadius: 6,
+    backgroundColor: '#fee2e2',
+    padding: 12,
+    borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 24,
   },
   removeVoiceButtonText: {
-    color: 'white',
+    color: '#ef4444',
     fontSize: 14,
+    fontWeight: '600',
   },
-  submitButton: {
+  logButton: {
     backgroundColor: '#10b981',
-    padding: 16,
-    borderRadius: 8,
+    padding: 18,
+    borderRadius: 12,
     alignItems: 'center',
-    marginTop: 20,
+    marginBottom: 12,
+    shadowColor: '#059669',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
-  submitButtonDisabled: {
-    backgroundColor: '#9ca3af',
-  },
-  submitButtonText: {
+  logButtonText: {
     color: 'white',
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   historyButton: {
     backgroundColor: '#6b7280',
-    padding: 12,
-    borderRadius: 8,
+    padding: 18,
+    borderRadius: 12,
     alignItems: 'center',
-    marginTop: 12,
+    shadowColor: '#4b5563',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   historyButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   modalOverlay: {
     flex: 1,
