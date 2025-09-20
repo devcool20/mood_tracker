@@ -94,12 +94,37 @@ def log_mood():
         if not all(field in data for field in required_fields):
             return jsonify({'error': 'Missing required fields'}), 400
         
+        # Generate AI insight immediately when logging mood
+        insight = ""
+        if model and data.get('text_note'):
+            try:
+                prompt = f"""
+                Analyze this mood entry and provide meaningful insights:
+                Mood: {data['mood']}
+                Note: {data.get('text_note', 'No note provided')}
+                Date: {data['date']}
+                
+                Please provide:
+                1. A brief analysis of the mood
+                2. Potential patterns or triggers
+                3. Constructive suggestions
+                
+                Keep the response concise and helpful.
+                """
+                
+                response = model.generate_content(prompt)
+                insight = response.text
+            except Exception as e:
+                print(f"Error generating insight: {e}")
+                insight = "Unable to generate insight at this time."
+        
         entry = {
             'mood': data['mood'],
             'date': datetime.fromisoformat(data['date']),
             'text_note': data.get('text_note', ''),
             'voice_note_filename': data.get('voice_note_filename', ''),
             'voice_note_url': f"/voice/{data.get('voice_note_filename', '')}" if data.get('voice_note_filename') else '',
+            'insight': insight,
             'created_at': datetime.utcnow()
         }
         
@@ -109,6 +134,23 @@ def log_mood():
             'message': 'Mood logged successfully',
             'id': str(result.inserted_id)
         }), 201
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/mood/<mood_id>', methods=['DELETE'])
+def delete_mood(mood_id):
+    try:
+        # Find and delete the mood entry
+        result = mood_entries.delete_one({'_id': ObjectId(mood_id)})
+        
+        if result.deleted_count == 0:
+            return jsonify({'error': 'Mood entry not found'}), 404
+            
+        return jsonify({
+            'message': 'Mood deleted successfully',
+            'id': mood_id
+        }), 200
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -138,37 +180,9 @@ def get_mood_insight(mood_id):
         
         if not entry:
             return jsonify({'error': 'Mood entry not found'}), 404
-            
-        # Generate insight using Gemini
-        if not model:
-            insight = "Gemini API key not configured. Please add your GEMINI_API_KEY to the .env file to get AI-generated insights."
-        else:
-            try:
-                prompt = f"""
-                Analyze this mood entry and provide meaningful insights:
-                Mood: {entry['mood']}
-                Note: {entry.get('text_note', 'No note provided')}
-                Date: {entry['date']}
-                
-                Please provide:
-                1. A brief analysis of the mood
-                2. Potential patterns or triggers
-                3. Constructive suggestions
-                
-                Keep the response concise and helpful.
-                """
-                
-                response = model.generate_content(prompt)
-                insight = response.text
-                    
-            except Exception as e:
-                insight = f"Error generating insight: {str(e)}"
         
-        # Update the entry with the insight
-        mood_entries.update_one(
-            {'_id': ObjectId(mood_id)},
-            {'$set': {'insight': insight}}
-        )
+        # Return the stored insight (generated when mood was logged)
+        insight = entry.get('insight', 'No insight available for this mood entry.')
         
         return jsonify({
             'mood_id': mood_id,
@@ -179,4 +193,4 @@ def get_mood_insight(mood_id):
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
