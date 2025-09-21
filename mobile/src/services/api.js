@@ -1,7 +1,8 @@
 // Replace with your computer's IP address
-const API_BASE_URL = 'http://192.168.29.83:5000'; // Change this to your IP
+export const API_BASE_URL = 'http://192.168.29.83:5000'; // Change this to your IP
 
 class ApiService {
+  static API_BASE_URL = API_BASE_URL;
   // Log a new mood entry
   async logMood(moodData) {
     try {
@@ -40,22 +41,6 @@ class ApiService {
     }
   }
 
-  // Get mood insight
-  async getMoodInsight(moodId) {
-    try {
-      const response = await fetch(`${API_BASE_URL}/mood/${moodId}/insight`);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching mood insight:', error);
-      throw error;
-    }
-  }
-
   // Delete mood entry
   async deleteMood(moodId) {
     try {
@@ -80,15 +65,12 @@ class ApiService {
       const formData = new FormData();
       formData.append('voice_note', {
         uri: uri,
-        type: 'audio/wav',
+        type: 'audio/m4a',
         name: filename,
       });
 
       const response = await fetch(`${API_BASE_URL}/upload-voice`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
         body: formData,
       });
 

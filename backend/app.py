@@ -94,10 +94,11 @@ def log_mood():
         if not all(field in data for field in required_fields):
             return jsonify({'error': 'Missing required fields'}), 400
         
-        # Generate AI insight immediately when logging mood
+        # Generate AI insight ONLY ONCE when logging mood
         insight = ""
         if model and data.get('text_note'):
             try:
+                print("Generating new insight using Gemini API...")
                 prompt = f"""
                 Analyze this mood entry and provide meaningful insights:
                 Mood: {data['mood']}
@@ -114,6 +115,7 @@ def log_mood():
                 
                 response = model.generate_content(prompt)
                 insight = response.text
+                print("Successfully generated new insight!")
             except Exception as e:
                 print(f"Error generating insight: {e}")
                 insight = "Unable to generate insight at this time."

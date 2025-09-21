@@ -9,8 +9,10 @@ import {
   RefreshControl,
   Modal,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
-import ApiService from '../services/api';
+import { Audio } from 'expo-av';
+import ApiService, { API_BASE_URL } from '../services/api';
 
 const MOOD_EMOJIS = {
   Happy: '😊',
@@ -30,7 +32,10 @@ export default function MoodHistoryScreen({ navigation }) {
   const [selectedMood, setSelectedMood] = useState(null);
   const [showInsightModal, setShowInsightModal] = useState(false);
   const [insight, setInsight] = useState('');
-  const [loadingInsight, setLoadingInsight] = useState(false);
+  // Removed loadingInsight state since insights are stored in the database
+  const [sound, setSound] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
 
   useEffect(() => {
     loadMoodHistory();
@@ -54,23 +59,11 @@ export default function MoodHistoryScreen({ navigation }) {
     setRefreshing(false);
   };
 
-  const handleMoodPress = async (moodEntry) => {
-    console.log('handleMoodPress called with:', moodEntry);
+  const handleMoodPress = (moodEntry) => {
     setSelectedMood(moodEntry);
     setShowInsightModal(true);
-    setLoadingInsight(true);
-    
-    try {
-      const insightResponse = await ApiService.getMoodInsight(moodEntry._id);
-      console.log('Insight response:', insightResponse);
-      setInsight(insightResponse.insight);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to load mood insight');
-      console.error('Error loading insight:', error);
-      setInsight('Unable to load insights at this time.');
-    } finally {
-      setLoadingInsight(false);
-    }
+    // Use the insight that's already stored in the mood entry
+    setInsight(moodEntry.insight || 'No insight available for this mood entry.');
   };
 
   const handleDeleteMood = async (moodId) => {
@@ -105,9 +98,97 @@ export default function MoodHistoryScreen({ navigation }) {
   };
 
   const closeInsightModal = () => {
+    if (sound) {
+      sound.unloadAsync();
+      setSound(null);
+    }
+    setIsPlaying(false);
     setShowInsightModal(false);
     setSelectedMood(null);
     setInsight('');
+  };
+
+  const playVoiceNote = async () => {
+    try {
+      if (!selectedMood?.voice_note_url) {
+        console.log('No voice note URL found');
+        Alert.alert('Error', 'No voice note available');
+        return;
+      }
+
+      setIsLoadingAudio(true);
+
+      if (isPlaying && sound) {
+        console.log('Stopping current playback');
+        // Stop current playback
+        await sound.stopAsync();
+        await sound.unloadAsync();
+        setSound(null);
+        setIsPlaying(false);
+        setIsLoadingAudio(false);
+        return;
+      }
+
+      console.log('Voice note URL:', selectedMood.voice_note_url);
+
+      // Configure audio mode first
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        allowsRecordingIOS: false,
+      });
+
+      // Create and load new sound
+      const soundUrl = `${API_BASE_URL}${selectedMood.voice_note_url}`;
+      console.log('Loading sound from:', soundUrl);
+      
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: soundUrl },
+        { shouldPlay: false },
+        (status) => {
+          console.log('Loading status:', status);
+        }
+      );
+
+      setSound(newSound);
+
+      // Configure audio mode
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+      });
+
+      // Play the sound
+      await newSound.playAsync();
+      setIsPlaying(true);
+
+      // Handle playback finished
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) {
+          setIsPlaying(false);
+        }
+      });
+
+    } catch (error) {
+      console.error('Error playing voice note:', error);
+      Alert.alert(
+        'Error',
+        'Failed to play voice note. Please check your internet connection and try again.'
+      );
+      
+      // Cleanup on error
+      if (sound) {
+        try {
+          await sound.unloadAsync();
+        } catch (cleanupError) {
+          console.error('Error cleaning up sound:', cleanupError);
+        }
+        setSound(null);
+      }
+      setIsPlaying(false);
+    } finally {
+      setIsLoadingAudio(false);
+    }
   };
 
   const formatInsight = (insightText) => {
@@ -272,6 +353,29 @@ export default function MoodHistoryScreen({ navigation }) {
                 {selectedMood?.text_note || 'No note provided'}
               </Text>
 
+              {/* Voice Note */}
+              {selectedMood?.voice_note_url && (
+                <View style={styles.voiceNoteSection}>
+                  <Text style={styles.sectionTitle}>Voice Note:</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.playVoiceButton,
+                      isPlaying && styles.stopVoiceButton
+                    ]}
+                    onPress={playVoiceNote}
+                    disabled={isLoadingAudio}
+                  >
+                    {isLoadingAudio ? (
+                      <ActivityIndicator color="white" />
+                    ) : (
+                      <Text style={styles.playVoiceButtonText}>
+                        {isPlaying ? '⏹ Stop' : '▶️ Play'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {/* Tags */}
               <Text style={styles.sectionTitle}>Tags & Patterns:</Text>
               <View style={styles.tagsContainer}>
@@ -284,9 +388,7 @@ export default function MoodHistoryScreen({ navigation }) {
 
               {/* Insights */}
               <Text style={styles.sectionTitle}>AI Insights:</Text>
-              {loadingInsight ? (
-                <Text style={styles.loadingText}>Loading insights...</Text>
-              ) : insight ? (
+              {insight ? (
                 <View style={styles.insightsContainer}>
                   {insight.split(/(?=\d+\.\s+)/).map((section, index) => {
                     const trimmed = section.trim();
@@ -446,6 +548,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     position: 'absolute',
+    marginBottom: 20,
     bottom: 0,
     left: 0,
     right: 0,
@@ -732,5 +835,33 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     margin: 10,
+  },
+  voiceNoteSection: {
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  playVoiceButton: {
+    backgroundColor: '#10b981',
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+    shadowColor: '#059669',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  stopVoiceButton: {
+    backgroundColor: '#ef4444',
+    shadowColor: '#dc2626',
+  },
+  playVoiceButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

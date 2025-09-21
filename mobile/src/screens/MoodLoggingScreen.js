@@ -11,6 +11,7 @@ import {
   FlatList,
 } from 'react-native';
 import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import ApiService from '../services/api';
 
@@ -31,6 +32,12 @@ export default function MoodLoggingScreen({ navigation }) {
   const [isLoading, setIsLoading] = useState(false);
   const [voiceNote, setVoiceNote] = useState(null);
   const [showMoodPicker, setShowMoodPicker] = useState(false);
+  const [recording, setRecording] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordingTimer, setRecordingTimer] = useState(null);
+  const [sound, setSound] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const handleLogMood = async () => {
     if (!mood) {
@@ -83,19 +90,152 @@ export default function MoodLoggingScreen({ navigation }) {
     }
   };
 
-  const pickVoiceNote = async () => {
+  const startRecording = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'audio/*',
-        copyToCacheDirectory: true,
+      // Request permissions
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Permission required', 'Please grant microphone permission to record voice notes.');
+        return;
+      }
+
+      // Set audio mode
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
       });
 
-      if (!result.canceled) {
-        setVoiceNote(result.assets[0]);
-      }
+      // Create recording
+      const { recording: newRecording } = await Audio.Recording.createAsync({
+        android: {
+          extension: '.m4a',
+          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
+          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+          sampleRate: 44100,
+          numberOfChannels: 2,
+          bitRate: 128000,
+        },
+        ios: {
+          extension: '.m4a',
+          outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
+          sampleRate: 44100,
+          numberOfChannels: 2,
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+      });
+
+      setRecording(newRecording);
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      // Start timer
+      const timer = setInterval(() => {
+        setRecordingDuration((prev) => {
+          if (prev >= 30) {
+            stopRecording();
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+
+      setRecordingTimer(timer);
+
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick voice note');
-      console.error('Error picking voice note:', error);
+      Alert.alert('Error', 'Failed to start recording');
+      console.error('Error starting recording:', error);
+    }
+  };
+
+  const stopRecording = async () => {
+    try {
+      if (!recording) return;
+
+      // Clear timer
+      if (recordingTimer) {
+        clearInterval(recordingTimer);
+        setRecordingTimer(null);
+      }
+
+      // Stop recording
+      await recording.stopAndUnloadAsync();
+      setIsRecording(false);
+
+      // Get recording URI
+      const uri = recording.getURI();
+      
+      // Create file info object
+      const fileName = `recording-${Date.now()}.m4a`;
+      setVoiceNote({
+        uri,
+        name: fileName,
+        type: 'audio/m4a',
+      });
+
+      // Clean up recording object
+      setRecording(null);
+      setRecordingDuration(0);
+
+    } catch (error) {
+      Alert.alert('Error', 'Failed to stop recording');
+      console.error('Error stopping recording:', error);
+    }
+  };
+
+  const playRecording = async () => {
+    try {
+      if (!voiceNote) {
+        Alert.alert('Error', 'No recording available');
+        return;
+      }
+
+      if (isPlaying) {
+        // Stop playback
+        if (sound) {
+          await sound.stopAsync();
+          await sound.unloadAsync();
+          setSound(null);
+        }
+        setIsPlaying(false);
+        return;
+      }
+
+      // Configure audio mode
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+      });
+
+      console.log('Playing from URI:', voiceNote.uri);
+      const newSound = new Audio.Sound();
+      await newSound.loadAsync({ uri: voiceNote.uri });
+      
+      // Set up playback finished handler
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) {
+          setIsPlaying(false);
+          newSound.unloadAsync();
+          setSound(null);
+        }
+      });
+
+      setSound(newSound);
+      await newSound.playAsync();
+      setIsPlaying(true);
+
+    } catch (error) {
+      Alert.alert('Error', 'Failed to play recording');
+      console.error('Error playing recording:', error);
+      setIsPlaying(false);
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
+      }
     }
   };
 
@@ -137,21 +277,38 @@ export default function MoodLoggingScreen({ navigation }) {
               placeholderTextColor="#9ca3af"
             />
 
-            <Text style={styles.label}>Voice Note (optional)</Text>
-            <TouchableOpacity style={styles.voiceButton} onPress={pickVoiceNote}>
+          <Text style={styles.label}>Voice Note (optional - max 30 sec)</Text>
+          
+          {!voiceNote ? (
+            <TouchableOpacity 
+              style={[styles.voiceButton, isRecording && styles.recordingButton]} 
+              onPress={isRecording ? stopRecording : startRecording}
+            >
               <Text style={styles.voiceButtonText}>
-                {voiceNote ? `Selected: ${voiceNote.name}` : 'Record or Select Voice Note'}
+                {isRecording 
+                  ? `Recording... ${recordingDuration}s` 
+                  : 'Start Recording'}
               </Text>
             </TouchableOpacity>
+          ) : (
+            <View style={styles.recordingControls}>
+              <TouchableOpacity 
+                style={[styles.playButton, isPlaying && styles.stopButton]} 
+                onPress={playRecording}
+              >
+                <Text style={styles.playButtonText}>
+                  {isPlaying ? '⏹ Stop' : '▶️ Play'}
+                </Text>
+              </TouchableOpacity>
 
-            {voiceNote && (
               <TouchableOpacity 
                 style={styles.removeVoiceButton} 
                 onPress={() => setVoiceNote(null)}
               >
-                <Text style={styles.removeVoiceButtonText}>Remove Voice Note</Text>
+                <Text style={styles.removeVoiceButtonText}>🗑 Remove</Text>
               </TouchableOpacity>
-            )}
+            </View>
+          )}
           </View>
         </ScrollView>
 
@@ -267,7 +424,7 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   voiceButton: {
-    backgroundColor: '#818cf8',
+    backgroundColor: '#6366f1',
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
@@ -281,7 +438,40 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
+  recordingButton: {
+    backgroundColor: '#ef4444',
+    shadowColor: '#dc2626',
+  },
   voiceButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  recordingControls: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  playButton: {
+    backgroundColor: '#10b981',
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    flex: 0.48,
+    shadowColor: '#059669',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  stopButton: {
+    backgroundColor: '#ef4444',
+    shadowColor: '#dc2626',
+  },
+  playButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
@@ -291,7 +481,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 24,
+    flex: 0.48,
   },
   removeVoiceButtonText: {
     color: '#ef4444',
@@ -299,7 +489,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   logButton: {
-    backgroundColor: '#10b981',
+    backgroundColor: '#6366f1',
     padding: 18,
     borderRadius: 12,
     alignItems: 'center',
